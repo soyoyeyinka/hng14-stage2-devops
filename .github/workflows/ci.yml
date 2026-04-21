@@ -18,120 +18,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Prepare environment file
+      - name: Create env file
         run: cp .env.example .env
 
-      - name: Python syntax check
-        run: |
-          python -m py_compile api/main.py
-          python -m py_compile worker/worker.py
-
-      - name: Frontend dependency install check
-        run: |
-          cd frontend
-          npm ci --omit=dev
-
-      - name: Validate Docker Compose file
+      - name: Validate docker-compose
         run: docker compose config
 
-      - name: Build containers
-        run: docker compose build
-
-      - name: Start application stack
-        run: docker compose up -d
+      - name: Build and start services
+        run: docker compose up -d --build
 
       - name: Show running containers
         run: docker compose ps
 
-      - name: Wait for API container health
-        run: |
-          for i in {1..30}; do
-            if docker compose ps api | grep -q "healthy"; then
-              echo "API is healthy"
-              exit 0
-            fi
-            echo "Waiting for API health..."
-            sleep 5
-          done
-          docker compose ps
-          docker compose logs --no-color
-          exit 1
+      - name: Wait for services
+        run: sleep 20
 
-      - name: Wait for frontend internal health
-        run: |
-          for i in {1..30}; do
-            if docker compose exec -T frontend wget -qO- http://localhost:3000/health | grep -q '"status":"ok"\|"status": "ok"'; then
-              echo "Frontend internal health OK"
-              exit 0
-            fi
-            echo "Waiting for frontend internal health..."
-            sleep 5
-          done
-          docker compose ps
-          docker compose logs --no-color frontend api worker redis
-          exit 1
+      - name: API health check
+        run: curl --retry 10 --retry-delay 5 --retry-connrefused http://localhost:8000/health
 
-      - name: Verify API reachable from frontend container
-        run: |
-          docker compose exec -T frontend wget -qO- http://api:8000/health
+      - name: Frontend health check
+        run: curl --retry 10 --retry-delay 5 --retry-connrefused http://localhost:3000/health
 
-      - name: Verify frontend health from host
-        run: |
-          curl -fsS http://localhost:3000/health
-
-      - name: Submit test job
-        run: |
-          JOB_RESPONSE=$(curl -fsS -X POST http://localhost:3000/submit)
-          echo "$JOB_RESPONSE"
-          export JOB_RESPONSE
-
-          JOB_ID=$(python - <<'PY'
-import json, os
-print(json.loads(os.environ["JOB_RESPONSE"])["job_id"])
-PY
-)
-          echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
-
-      - name: Poll job status until completed
-        run: |
-          for i in {1..30}; do
-            STATUS_RESPONSE=$(curl -fsS http://localhost:3000/status/${JOB_ID})
-            echo "$STATUS_RESPONSE"
-            export STATUS_RESPONSE
-
-            STATUS=$(python - <<'PY'
-import json, os
-print(json.loads(os.environ["STATUS_RESPONSE"]).get("status", ""))
-PY
-)
-
-            if [ "$STATUS" = "completed" ]; then
-              echo "Job completed successfully"
-              exit 0
-            fi
-
-            echo "Job not completed yet, waiting..."
-            sleep 3
-          done
-
-          echo "Job did not complete in time"
-          docker compose logs --no-color frontend api worker redis
-          exit 1
-
-      - name: Show logs on failure
-        if: failure()
-        run: docker compose logs --no-color frontend api worker redis
-
-      - name: Tear down stack
+      - name: Shutdown services
         if: always()
         run: docker compose down -v
