@@ -17,6 +17,8 @@ r = redis.Redis(
     decode_responses=True,
 )
 
+
+
 @app.get("/health")
 def health():
     try:
@@ -24,6 +26,8 @@ def health():
         return {"status": "ok"}
     except redis.RedisError as exc:
         raise HTTPException(status_code=503, detail=f"redis unavailable: {exc}")
+
+
 
 @app.post("/jobs", status_code=201)
 def create_job():
@@ -34,6 +38,8 @@ def create_job():
         return {"job_id": job_id, "status": "queued"}
     except redis.RedisError as exc:
         raise HTTPException(status_code=503, detail=f"failed to queue job: {exc}")
+
+
 
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str):
