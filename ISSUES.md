@@ -140,3 +140,35 @@ This reduces reliability during rolling updates and controlled shutdowns.
 The brief explicitly forbids committing real `.env` files and requires a `.env.example` with placeholder values.
 
 
+## 11. Services were healthy internally but not reachable from the host
+
+**Scope:** `docker-compose.yml` runtime validation  
+**Issue:** After container build and startup, the API and frontend were healthy inside Docker, but `curl http://localhost:8000/health` and `curl http://localhost:3000/health` from the host failed.
+
+**Evidence observed:**  
+- `docker compose exec api curl -fsS http://localhost:8000/health` succeeded  
+- `docker compose exec frontend wget -qO- http://localhost:3000/health` succeeded  
+- `docker compose exec frontend wget -qO- http://api:8000/health` succeeded  
+- host-side localhost checks failed
+
+**Why this is a problem:**  
+The services must be reachable from the host for local validation, browser access, and deployment-style verification.
+
+**Project impact:**  
+This blocks host-based testing even though the application stack is functioning correctly inside Docker.
+
+## 12. Frontend host health check initially failed during runtime validation.
+
+**Scope:** frontend runtime validation  
+**Issue:** After fixing host port publishing, the API became reachable from the host, but `curl http://localhost:3000/health` returned `Recv failure: Connection reset by peer`.
+
+**Evidence observed:**  
+- `curl http://localhost:8000/health` returned a healthy JSON response  
+- `docker compose ps` showed correct published ports for both API and frontend  
+- frontend container remained in `health: starting` state during the failed host check
+
+**Why this is a problem:**  
+The frontend must be reachable from the host for browser validation, end-to-end job submission, and deployment-style smoke checks.
+
+**Project impact:**  
+This blocks complete host-side validation of the user-facing service even though the API is already reachable.

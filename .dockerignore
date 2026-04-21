@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+coverage/
+README.md
+ISSUES.md
+FIXES.md

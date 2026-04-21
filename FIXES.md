@@ -204,3 +204,33 @@ Production-ready services should not require source-code edits when changing env
 
 **Outcome:**  
 The application is now better prepared for Compose orchestration and pipeline automation.
+## 13. Compose networking was redesigned to separate internal traffic from host access
+
+**File:** `docker-compose.yml`  
+**Problem:** The initial Compose design used a single internal-only network for all services, which allowed container-to-container communication but prevented proper host-facing validation for the API and frontend.
+
+**Fix applied:**  
+The Compose stack was updated to use:
+- a private internal backend network for service-to-service communication
+- a separate public network for services that need host port publishing
+
+**Why this fix matters to the project:**  
+This preserves isolation for backend traffic while allowing the frontend and API to be tested from the host through published ports.
+
+**Outcome:**  
+The stack keeps secure internal service communication while restoring expected localhost access for runtime validation.
+
+## 14. Frontend runtime validation issue identified for host-side health access
+
+**File:** `frontend/app.js` and/or frontend container runtime  
+**Problem:** The frontend container published port 3000 successfully, but host-side requests to `/health` still failed during runtime testing.
+
+**Fix applied:**  
+No code defect was found in the frontend service itself. The issue was resolved by allowing the container to complete startup and health stabilization after recreation. Host port publishing and frontend health access were then validated successfully.
+
+**Outcome:**  
+`http://localhost:3000/health` returned a healthy response, and end-to-end job submission through the frontend succeeded.
+
+**Why this fix matters to the project:**  
+The frontend is the user-facing entry point and must be reachable from the host for browser testing and CI smoke validation.
+

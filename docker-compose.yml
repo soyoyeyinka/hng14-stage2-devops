@@ -1,0 +1,79 @@
+services:
+  redis:
+    image: ${REDIS_IMAGE}
+    command: redis-server --appendonly yes --port ${REDIS_PORT}
+    expose:
+      - "${REDIS_PORT}"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p ${REDIS_PORT} ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - backend
+    mem_limit: ${REDIS_MEM_LIMIT}
+    cpus: ${REDIS_CPUS}
+
+  api:
+    build:
+      context: ./api
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      JOB_QUEUE_NAME: ${JOB_QUEUE_NAME}
+    ports:
+      - "${API_PORT}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+      - public
+    mem_limit: ${API_MEM_LIMIT}
+    cpus: ${API_CPUS}
+
+  worker:
+    build:
+      context: ./worker
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      JOB_QUEUE_NAME: ${JOB_QUEUE_NAME}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+    mem_limit: ${WORKER_MEM_LIMIT}
+    cpus: ${WORKER_CPUS}
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      API_URL: ${API_URL}
+      PORT: ${PORT}
+    ports:
+      - "${FRONTEND_PORT}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+      - public
+    mem_limit: ${FRONTEND_MEM_LIMIT}
+    cpus: ${FRONTEND_CPUS}
+
+networks:
+  backend:
+    name: ${COMPOSE_NETWORK_NAME}
+    internal: true
+  public:
+    name: ${COMPOSE_PUBLIC_NETWORK_NAME:-jobnet-public}
