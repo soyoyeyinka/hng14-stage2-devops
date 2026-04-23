@@ -274,15 +274,7 @@ jobs:
         run: |
           RESPONSE=$(curl -fsS -X POST http://localhost:3000/submit)
           echo "$RESPONSE"
-          echo "RESPONSE=$RESPONSE" >> "$GITHUB_ENV"
-
-      - name: Extract job id
-        run: |
-          JOB_ID=$(python - <<'PY'
-import json, os
-print(json.loads(os.environ["RESPONSE"])["job_id"])
-PY
-)
+          JOB_ID=$(python -c 'import json,sys; print(json.loads(sys.stdin.read())["job_id"])' <<< "$RESPONSE")
           echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
           echo "$JOB_ID"
 
@@ -291,13 +283,8 @@ PY
           for i in {1..20}; do
             STATUS_RESPONSE=$(curl -fsS "http://localhost:3000/status/${JOB_ID}")
             echo "$STATUS_RESPONSE"
-            export STATUS_RESPONSE
+            STATUS=$(python -c 'import json,sys; print(json.loads(sys.stdin.read()).get("status",""))' <<< "$STATUS_RESPONSE")
 
-            STATUS=$(python - <<'PY'
-import json, os
-print(json.loads(os.environ["STATUS_RESPONSE"]).get("status", ""))
-PY
-)
             if [ "$STATUS" = "completed" ]; then
               echo "Job completed successfully"
               exit 0
