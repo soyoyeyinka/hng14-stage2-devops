@@ -9,6 +9,7 @@ on:
       - test-stage
       - build-stage
       - security-scan-stage
+      - integration-test-stage
   pull_request:
     branches:
       - main
@@ -160,7 +161,7 @@ jobs:
           gunzip -c built-images/frontend-image.tar.gz | docker load
 
       - name: Scan api image and generate SARIF
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.35.0
         continue-on-error: true
         with:
           scan-type: image
@@ -171,7 +172,7 @@ jobs:
           exit-code: "0"
 
       - name: Scan worker image and generate SARIF
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.35.0
         continue-on-error: true
         with:
           scan-type: image
@@ -182,7 +183,7 @@ jobs:
           exit-code: "0"
 
       - name: Scan frontend image and generate SARIF
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.35.0
         continue-on-error: true
         with:
           scan-type: image
@@ -202,7 +203,7 @@ jobs:
             frontend-trivy.sarif
 
       - name: Fail on CRITICAL vulnerabilities in api image
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
           image-ref: hng14-stage2-devops-api:${{ env.SHORT_SHA }}
@@ -211,7 +212,7 @@ jobs:
           exit-code: "1"
 
       - name: Fail on CRITICAL vulnerabilities in worker image
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
           image-ref: hng14-stage2-devops-worker:${{ env.SHORT_SHA }}
@@ -220,7 +221,7 @@ jobs:
           exit-code: "1"
 
       - name: Fail on CRITICAL vulnerabilities in frontend image
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
           image-ref: hng14-stage2-devops-frontend:${{ env.SHORT_SHA }}
@@ -228,7 +229,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
 
-  validate-and-smoke-test:
+  integration-test:
     runs-on: ubuntu-latest
     needs: security-scan
 
@@ -239,7 +240,7 @@ jobs:
       - name: Create env file
         run: cp .env.example .env
 
-      - name: Start containers
+      - name: Start full stack
         run: docker compose up -d --build
 
       - name: Show running containers
@@ -269,11 +270,46 @@ jobs:
           docker compose logs --no-color
           exit 1
 
-      - name: Smoke test job creation
+      - name: Submit job through frontend
         run: |
-          response=$(curl -s -X POST http://localhost:8000/jobs)
-          echo "$response"
-          echo "$response" | grep job_id
+          RESPONSE=$(curl -fsS -X POST http://localhost:3000/submit)
+          echo "$RESPONSE"
+          echo "RESPONSE=$RESPONSE" >> "$GITHUB_ENV"
+
+      - name: Extract job id
+        run: |
+          JOB_ID=$(python - <<'PY'
+import json, os
+print(json.loads(os.environ["RESPONSE"])["job_id"])
+PY
+)
+          echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
+          echo "$JOB_ID"
+
+      - name: Poll job status through frontend until completed
+        run: |
+          for i in {1..20}; do
+            STATUS_RESPONSE=$(curl -fsS "http://localhost:3000/status/${JOB_ID}")
+            echo "$STATUS_RESPONSE"
+            export STATUS_RESPONSE
+
+            STATUS=$(python - <<'PY'
+import json, os
+print(json.loads(os.environ["STATUS_RESPONSE"]).get("status", ""))
+PY
+)
+            if [ "$STATUS" = "completed" ]; then
+              echo "Job completed successfully"
+              exit 0
+            fi
+
+            echo "Job not completed yet, waiting..."
+            sleep 3
+          done
+
+          echo "Job did not complete in time"
+          docker compose logs --no-color
+          exit 1
 
       - name: Show logs on failure
         if: failure()
