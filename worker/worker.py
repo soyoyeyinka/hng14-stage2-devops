@@ -17,13 +17,16 @@ r = redis.Redis(
 
 RUNNING = True
 
+
 def handle_shutdown(signum, frame):
     global RUNNING
     RUNNING = False
     print(f"Received signal {signum}. Shutting down worker...")
 
+
 signal.signal(signal.SIGTERM, handle_shutdown)
 signal.signal(signal.SIGINT, handle_shutdown)
+
 
 def process_job(job_id):
     print(f"Processing job {job_id}")
@@ -31,16 +34,11 @@ def process_job(job_id):
     r.hset(f"job:{job_id}", "status", "completed")
     print(f"Done: {job_id}")
 
+
 while RUNNING:
-    try:
-        job = r.brpop(JOB_QUEUE_NAME, timeout=5)
-        if not job:
-            continue
+    result = r.brpop(JOB_QUEUE_NAME, timeout=5)
+    if not result:
+        continue
 
-        _, job_id = job
-        process_job(job_id)
-    except redis.RedisError as exc:
-        print(f"Redis error: {exc}")
-        time.sleep(2)
-
-print("Worker stopped")
+    _, job_id = result
+    process_job(job_id)
