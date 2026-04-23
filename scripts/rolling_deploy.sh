@@ -41,19 +41,37 @@ FRONTEND_IMAGE=${frontend_image}
 ENV
 }
 
-wait_for_health() {
+wait_for_api_http() {
   local container_name="$1"
   local timeout_seconds="$2"
   local elapsed=0
 
   while [ "${elapsed}" -lt "${timeout_seconds}" ]; do
-    status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_name}" 2>/dev/null || echo "missing")
-    echo "${container_name} health=${status}"
-
-    if [ "${status}" = "healthy" ]; then
+    if docker exec "${container_name}" python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health'); print('ok')" >/dev/null 2>&1; then
+      echo "${container_name} api health=ok"
       return 0
     fi
 
+    echo "${container_name} api health=waiting"
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  return 1
+}
+
+wait_for_frontend_http() {
+  local container_name="$1"
+  local timeout_seconds="$2"
+  local elapsed=0
+
+  while [ "${elapsed}" -lt "${timeout_seconds}" ]; do
+    if docker exec "${container_name}" node -e "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" >/dev/null 2>&1; then
+      echo "${container_name} frontend health=ok"
+      return 0
+    fi
+
+    echo "${container_name} frontend health=waiting"
     sleep 5
     elapsed=$((elapsed + 5))
   done
@@ -77,16 +95,26 @@ write_env_file "${DEPLOY_DIR}/candidate.env" \
   "${APP_NAME}-frontend:${NEW_TAG}" \
   "${CANDIDATE_PROJECT}-backend"
 
+docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/current.env" -p "${CURRENT_PROJECT}" down -v --remove-orphans || true
+docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/candidate.env" -p "${CANDIDATE_PROJECT}" down -v --remove-orphans || true
+
 docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/current.env" -p "${CURRENT_PROJECT}" up -d
 docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/candidate.env" -p "${CANDIDATE_PROJECT}" up -d
 
-if wait_for_health "${CANDIDATE_PROJECT}-api-1" "${TIMEOUT_SECONDS}" && wait_for_health "${CANDIDATE_PROJECT}-frontend-1" "${TIMEOUT_SECONDS}"; then
+echo "Current stack:"
+docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/current.env" -p "${CURRENT_PROJECT}" ps
+
+echo "Candidate stack:"
+docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/candidate.env" -p "${CANDIDATE_PROJECT}" ps
+
+if wait_for_api_http "${CANDIDATE_PROJECT}-api-1" "${TIMEOUT_SECONDS}" && wait_for_frontend_http "${CANDIDATE_PROJECT}-frontend-1" "${TIMEOUT_SECONDS}"; then
   echo "Candidate stack is healthy. Stopping current stack."
-  docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/current.env" -p "${CURRENT_PROJECT}" down
+  docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/current.env" -p "${CURRENT_PROJECT}" down -v
   echo "Rolling update successful. Candidate stack remains running."
   docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/candidate.env" -p "${CANDIDATE_PROJECT}" ps
 else
   echo "Candidate stack failed health checks within ${TIMEOUT_SECONDS}s. Leaving current stack running."
+  docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/candidate.env" -p "${CANDIDATE_PROJECT}" ps || true
   docker compose -f docker-compose.deploy.yml --env-file "${DEPLOY_DIR}/candidate.env" -p "${CANDIDATE_PROJECT}" logs --no-color || true
   exit 1
 fi
