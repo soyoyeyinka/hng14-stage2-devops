@@ -55,26 +55,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create env file
-        run: |
-          cat > .env <<'EOF'
-          REDIS_IMAGE=redis:7-alpine
-          REDIS_HOST=redis
-          REDIS_PORT=6379
-          REDIS_DB=0
-          JOB_QUEUE_NAME=job
-          API_PORT=8000
-          FRONTEND_PORT=3000
-          REDIS_MEM_LIMIT=256m
-          REDIS_CPUS=0.50
-          API_MEM_LIMIT=256m
-          API_CPUS=0.50
-          WORKER_MEM_LIMIT=256m
-          WORKER_CPUS=0.50
-          FRONTEND_MEM_LIMIT=256m
-          FRONTEND_CPUS=0.50
-          COMPOSE_NETWORK_NAME=jobnet
-          COMPOSE_PUBLIC_NETWORK_NAME=jobnet-public
-          EOF
+        run: cp .env.example .env
 
       - name: Start containers
         run: docker compose up -d --build
