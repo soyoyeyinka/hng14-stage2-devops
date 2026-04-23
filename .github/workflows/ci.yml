@@ -160,7 +160,7 @@ jobs:
           gunzip -c built-images/frontend-image.tar.gz | docker load
 
       - name: Scan api image and generate SARIF
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         continue-on-error: true
         with:
           scan-type: image
@@ -171,7 +171,7 @@ jobs:
           exit-code: "0"
 
       - name: Scan worker image and generate SARIF
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         continue-on-error: true
         with:
           scan-type: image
@@ -182,7 +182,7 @@ jobs:
           exit-code: "0"
 
       - name: Scan frontend image and generate SARIF
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         continue-on-error: true
         with:
           scan-type: image
@@ -202,7 +202,7 @@ jobs:
             frontend-trivy.sarif
 
       - name: Fail on CRITICAL vulnerabilities in api image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: image
           image-ref: hng14-stage2-devops-api:${{ env.SHORT_SHA }}
@@ -211,7 +211,7 @@ jobs:
           exit-code: "1"
 
       - name: Fail on CRITICAL vulnerabilities in worker image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: image
           image-ref: hng14-stage2-devops-worker:${{ env.SHORT_SHA }}
@@ -220,7 +220,7 @@ jobs:
           exit-code: "1"
 
       - name: Fail on CRITICAL vulnerabilities in frontend image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: image
           image-ref: hng14-stage2-devops-frontend:${{ env.SHORT_SHA }}
