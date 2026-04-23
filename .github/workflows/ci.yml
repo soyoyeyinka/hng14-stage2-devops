@@ -7,6 +7,7 @@ on:
       - ci-pipeline
       - ci-full-pipeline
       - test-stage
+      - build-stage
   pull_request:
     branches:
       - main
@@ -81,9 +82,62 @@ jobs:
           name: api-coverage-report
           path: coverage.xml
 
-  validate-and-smoke-test:
+  build:
     runs-on: ubuntu-latest
     needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Build api image
+        run: |
+          docker build \
+            -t hng14-stage2-devops-api:${SHORT_SHA} \
+            -t hng14-stage2-devops-api:latest \
+            ./api
+
+      - name: Build worker image
+        run: |
+          docker build \
+            -t hng14-stage2-devops-worker:${SHORT_SHA} \
+            -t hng14-stage2-devops-worker:latest \
+            ./worker
+
+      - name: Build frontend image
+        run: |
+          docker build \
+            -t hng14-stage2-devops-frontend:${SHORT_SHA} \
+            -t hng14-stage2-devops-frontend:latest \
+            ./frontend
+
+      - name: Show built images
+        run: docker image ls
+
+      - name: Export api image artifact
+        run: docker save hng14-stage2-devops-api:${SHORT_SHA} | gzip > api-image.tar.gz
+
+      - name: Export worker image artifact
+        run: docker save hng14-stage2-devops-worker:${SHORT_SHA} | gzip > worker-image.tar.gz
+
+      - name: Export frontend image artifact
+        run: docker save hng14-stage2-devops-frontend:${SHORT_SHA} | gzip > frontend-image.tar.gz
+
+      - name: Upload built image artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-images
+          path: |
+            api-image.tar.gz
+            worker-image.tar.gz
+            frontend-image.tar.gz
+
+  validate-and-smoke-test:
+    runs-on: ubuntu-latest
+    needs: build
 
     steps:
       - name: Checkout code
